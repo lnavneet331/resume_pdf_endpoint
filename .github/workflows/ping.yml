@@ -1,9 +1,8 @@
 name: Keep API Alive
-
 on:
   schedule:
-    - cron: '* * * * *' # Runs every 5 minutes
-
+    - cron: '* * * * *' # Runs every minute
+  workflow_dispatch: # Adds manual trigger button in GitHub UI
 jobs:
   ping:
     runs-on: ubuntu-latest
