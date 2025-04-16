@@ -58,6 +58,7 @@ def generate_pdf(data):
 @app.route('/generate_pdf', methods=['POST'])
 def create_pdf():
     try:
+        logger.debug('Raw request data: %s', request.data.decode('utf-8'))
         data = request.get_json()
         if not data:
             logger.warning('No data provided in request.')
