@@ -1,69 +1,59 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, send_file, jsonify
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-import json, os
+import os
 
 app = Flask(__name__)
 
 def generate_pdf(data):
-    # Create a PDF file
-    filename = "generated_resume.pdf"
+    filename = "/tmp/generated_resume.pdf"  # Render allows write access to /tmp
     c = canvas.Canvas(filename, pagesize=letter)
     width, height = letter
-    
-    # Add title
+
     c.setFont("Helvetica-Bold", 16)
     c.drawString(100, height - 100, "Resume - Data Science Intern")
-    
-    # Add skills
+
     c.setFont("Helvetica", 12)
-    c.drawString(100, height - 130, "Skills:")
-    y_position = height - 145
-    for skill in data["skills"]:
-        c.drawString(100, y_position, f"- {skill}")
-        y_position -= 15
+    y = height - 130
+    c.drawString(100, y, "Skills:")
+    for skill in data.get("skills", []):
+        y -= 15
+        c.drawString(120, y, f"- {skill}")
 
-    # Add Internship Experience
-    c.drawString(100, y_position - 10, "Internship Experience:")
-    y_position -= 25
-    for internship in data["internship"]:
-        c.drawString(100, y_position, f"Company: {internship['company']}")
-        y_position -= 15
-        c.drawString(100, y_position, f"Title: {internship['title']}")
-        y_position -= 15
-        c.drawString(100, y_position, f"Dates: {internship['dates']}")
-        y_position -= 15
-        c.drawString(100, y_position, f"Description: {internship['description']}")
-        y_position -= 30
+    for section in ["internship"]:
+        y -= 30
+        for item in data.get(section, []):
+            c.drawString(100, y, f"{item['title']} at {item['company']} ({item['dates']})")
+            y -= 15
+            c.drawString(110, y, item['description'])
+            y -= 30
 
-    # Add Project Experience
-    c.drawString(100, y_position - 10, "Project Experience:")
-    y_position -= 25
-    for project in [data["project_1"], data["project_2"]]:
-        c.drawString(100, y_position, f"Project: {project['name']}")
-        y_position -= 15
-        c.drawString(100, y_position, f"Dates: {project['dates']}")
-        y_position -= 15
-        c.drawString(100, y_position, f"Description: {project['description']}")
-        y_position -= 30
+    for key in ["project_1", "project_2"]:
+        project = data.get(key)
+        if project:
+            y -= 15
+            c.drawString(100, y, f"Project: {project['name']} ({project['dates']})")
+            y -= 15
+            c.drawString(110, y, project['description'])
+            y -= 30
 
-    # Save the PDF
     c.save()
     return filename
 
 @app.route('/generate_pdf', methods=['POST'])
 def create_pdf():
     try:
-        data = request.json
+        data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
-        
-        # Generate PDF
-        filename = generate_pdf(data)
-        return jsonify({"message": f"PDF generated successfully!", "filename": filename}), 200
+
+        pdf_path = generate_pdf(data)
+
+        return send_file(
+            pdf_path,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name='generated_resume.pdf'
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Default to 5000 if PORT not set
-    app.run(host='0.0.0.0', port=port)
