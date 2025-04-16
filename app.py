@@ -1,14 +1,15 @@
 import os
-import requests
 from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
 app = Flask(__name__)
 
+# Save PDF in the same folder as app.py
+PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
+
 def generate_pdf(data):
-    filename = "/tmp/generated_resume.pdf"
-    c = canvas.Canvas(filename, pagesize=letter)
+    c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
     width, height = letter
 
     c.setFont("Helvetica-Bold", 16)
@@ -39,7 +40,7 @@ def generate_pdf(data):
             y -= 30
 
     c.save()
-    return filename
+    return PDF_FILENAME
 
 @app.route('/generate_pdf', methods=['POST'])
 def create_pdf():
@@ -48,27 +49,24 @@ def create_pdf():
         if not data:
             return jsonify({"error": "No data provided"}), 400
 
-        pdf_path = generate_pdf(data)
+        generate_pdf(data)
+        preview_url = request.host_url.rstrip('/') + '/preview_resume'
 
-        # Upload to file.io
-        with open(pdf_path, 'rb') as f:
-            response = requests.post("https://file.io", files={'file': f})
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("success"):
-                return jsonify({
-                    "message": "PDF generated and uploaded successfully!",
-                    "download_url": result["link"]
-                }), 200
-            else:
-                return jsonify({"error": "Failed to upload to file.io", "details": result}), 500
-        else:
-            return jsonify({"error": "File upload failed", "status_code": response.status_code}), 500
+        return jsonify({
+            "message": "PDF generated successfully!",
+            "preview_url": preview_url
+        }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/preview_resume', methods=['GET'])
+def preview_resume():
+    if os.path.exists(PDF_FILENAME):
+        return send_file(PDF_FILENAME, mimetype='application/pdf')
+    else:
+        return jsonify({"error": "PDF not found"}), 404
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))  # Render sets this automatically
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
