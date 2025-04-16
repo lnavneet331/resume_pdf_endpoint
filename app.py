@@ -8,6 +8,10 @@ app = Flask(__name__)
 # Save PDF in the same folder as app.py
 PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
 
+@app.route('/')
+def home():
+    return 'Welcome to the Resume PDF Generator API!'
+    
 def generate_pdf(data):
     c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
     width, height = letter
