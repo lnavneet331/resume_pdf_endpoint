@@ -1,12 +1,13 @@
-from flask import Flask, request, send_file, jsonify
+import os
+import requests
+from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-import os
 
 app = Flask(__name__)
 
 def generate_pdf(data):
-    filename = "/tmp/generated_resume.pdf"  # Render allows write access to /tmp
+    filename = "/tmp/generated_resume.pdf"
     c = canvas.Canvas(filename, pagesize=letter)
     width, height = letter
 
@@ -49,11 +50,21 @@ def create_pdf():
 
         pdf_path = generate_pdf(data)
 
-        return send_file(
-            pdf_path,
-            mimetype='application/pdf',
-            as_attachment=True,
-            download_name='generated_resume.pdf'
-        )
+        # Upload to file.io
+        with open(pdf_path, 'rb') as f:
+            response = requests.post("https://file.io", files={'file': f})
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("success"):
+                return jsonify({
+                    "message": "PDF generated and uploaded successfully!",
+                    "download_url": result["link"]
+                }), 200
+            else:
+                return jsonify({"error": "Failed to upload to file.io", "details": result}), 500
+        else:
+            return jsonify({"error": "File upload failed", "status_code": response.status_code}), 500
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
