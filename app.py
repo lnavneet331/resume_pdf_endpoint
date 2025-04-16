@@ -8,25 +8,7 @@ app = Flask(__name__)
 # Save PDF in the same folder as app.py
 PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
 
-
-from flask import request, jsonify
-from functools import wraps
-
-API_KEY = 'smart-nav'  # Replace with your actual API key
-
-def require_api_key(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        key = request.headers.get('x-api-key')
-        if key and key == API_KEY:
-            return f(*args, **kwargs)
-        else:
-            return jsonify({'error': 'Unauthorized'}), 401
-    return decorated
-
-
 @app.route('/')
-@require_api_key
 def home():
     return 'Welcome to the Resume PDF Generator API!'
     
