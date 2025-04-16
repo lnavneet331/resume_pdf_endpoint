@@ -1,7 +1,12 @@
 import os
+import logging
 from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+
+# Setup logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -10,9 +15,12 @@ PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
 
 @app.route('/')
 def home():
+    logger.info('Home route accessed.')
     return 'Welcome to the Resume PDF Generator API!'
-    
+
 def generate_pdf(data):
+    logger.info('Generating PDF for data: %s', data)
+    
     c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
     width, height = letter
 
@@ -44,6 +52,7 @@ def generate_pdf(data):
             y -= 30
 
     c.save()
+    logger.info(f'PDF generated and saved as {PDF_FILENAME}')
     return PDF_FILENAME
 
 @app.route('/generate_pdf', methods=['POST'])
@@ -51,24 +60,30 @@ def create_pdf():
     try:
         data = request.get_json()
         if not data:
+            logger.warning('No data provided in request.')
             return jsonify({"error": "No data provided"}), 400
 
+        logger.info('Received data: %s', data)
         generate_pdf(data)
         preview_url = request.host_url.rstrip('/') + '/preview_resume'
 
+        logger.info('PDF generated successfully, preview URL: %s', preview_url)
         return jsonify({
             "message": "PDF generated successfully!",
             "preview_url": preview_url
         }), 200
 
     except Exception as e:
+        logger.error('Error generating PDF: %s', str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.route('/preview_resume', methods=['GET'])
 def preview_resume():
     if os.path.exists(PDF_FILENAME):
+        logger.info(f'Previewing PDF: {PDF_FILENAME}')
         return send_file(PDF_FILENAME, mimetype='application/pdf')
     else:
+        logger.warning('PDF file not found: %s', PDF_FILENAME)
         return jsonify({"error": "PDF not found"}), 404
 
 if __name__ == '__main__':
