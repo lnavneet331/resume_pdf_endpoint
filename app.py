@@ -3,57 +3,90 @@ import logging
 from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from textwrap import wrap
 
-# Setup logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# Setup logging to file and console
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),  # Save logs to a file
+        logging.StreamHandler()         # Also log to console
+    ]
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
-# Save PDF in the same folder as app.py
 PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
+
 
 @app.route('/')
 def home():
     logger.info('Home route accessed.')
     return 'Welcome to the Resume PDF Generator API!'
 
+
+def draw_wrapped_text(c, text, x, y, max_width, line_height):
+    """Helper function to wrap long text into lines"""
+    lines = wrap(text, width=95)  # Tune as needed for your layout
+    for line in lines:
+        if y <= 50:
+            c.showPage()
+            y = 750
+            c.setFont("Helvetica", 12)
+        c.drawString(x, y, line)
+        y -= line_height
+    return y
+
+
 def generate_pdf(data):
-    logger.info('Generating PDF for data: %s', data)
-    
-    c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
-    width, height = letter
+    try:
+        logger.info('Generating PDF...')
+        c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
+        width, height = letter
+        y = height - 50
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(100, height - 100, "Resume - Data Science Intern")
-
-    c.setFont("Helvetica", 12)
-    y = height - 130
-    c.drawString(100, y, "Skills:")
-    for skill in data.get("skills", []):
-        y -= 15
-        c.drawString(120, y, f"- {skill}")
-
-    for section in ["internship"]:
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, y, "Resume - Data Science Intern")
         y -= 30
-        for item in data.get(section, []):
-            c.drawString(100, y, f"{item['title']} at {item['company']} ({item['dates']})")
-            y -= 15
-            c.drawString(110, y, item['description'])
-            y -= 30
 
-    for key in ["project_1", "project_2"]:
-        project = data.get(key)
-        if project:
+        # Skills
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, "Skills:")
+        y -= 15
+        c.setFont("Helvetica", 12)
+        for skill in data.get("skills", []):
+            c.drawString(70, y, f"- {skill}")
             y -= 15
-            c.drawString(100, y, f"Project: {project['name']} ({project['dates']})")
-            y -= 15
-            c.drawString(110, y, project['description'])
-            y -= 30
 
-    c.save()
-    logger.info(f'PDF generated and saved as {PDF_FILENAME}')
-    return PDF_FILENAME
+        # Internships
+        for internship in data.get("internship", []):
+            y -= 20
+            c.setFont("Helvetica-Bold", 12)
+            c.drawString(50, y, f"{internship.get('title', '')} at {internship.get('company', '')} ({internship.get('dates', '')})")
+            y -= 15
+            c.setFont("Helvetica", 12)
+            y = draw_wrapped_text(c, internship.get("description", ""), 60, y, width - 100, 15)
+
+        # Projects
+        for key in ["project_1", "project_2"]:
+            project = data.get(key)
+            if project:
+                y -= 20
+                c.setFont("Helvetica-Bold", 12)
+                c.drawString(50, y, f"{project.get('project_name', '')} ({project.get('dates', '')})")
+                y -= 15
+                c.setFont("Helvetica", 12)
+                y = draw_wrapped_text(c, project.get("description", ""), 60, y, width - 100, 15)
+
+        c.save()
+        logger.info(f'PDF successfully saved at: {PDF_FILENAME}')
+        return PDF_FILENAME
+
+    except Exception as e:
+        logger.error(f"Exception in generate_pdf: {e}")
+        raise
+
 
 @app.route('/generate_pdf', methods=['POST'])
 def create_pdf():
@@ -61,31 +94,46 @@ def create_pdf():
         logger.debug('Raw request data: %s', request.data.decode('utf-8'))
         data = request.get_json(force=True)
         if not data:
-            logger.warning('No data provided in request.')
+            logger.warning('No JSON data received')
             return jsonify({"error": "No data provided"}), 400
 
-        logger.info('Received data: %s', data)
         generate_pdf(data)
         preview_url = request.host_url.rstrip('/') + '/preview_resume'
-
-        logger.info('PDF generated successfully, preview URL: %s', preview_url)
         return jsonify({
             "message": "PDF generated successfully!",
             "preview_url": preview_url
         }), 200
 
     except Exception as e:
-        logger.error('Error generating PDF: %s', str(e))
-        return jsonify({"error": str(e)}), 500
+        logger.exception("Error in /generate_pdf")
+        return jsonify({"error": "PDF generation failed", "details": str(e)}), 500
+
 
 @app.route('/preview_resume', methods=['GET'])
 def preview_resume():
     if os.path.exists(PDF_FILENAME):
-        logger.info(f'Previewing PDF: {PDF_FILENAME}')
+        logger.info('Serving generated resume PDF')
         return send_file(PDF_FILENAME, mimetype='application/pdf')
     else:
-        logger.warning('PDF file not found: %s', PDF_FILENAME)
+        logger.warning('PDF not found for preview')
         return jsonify({"error": "PDF not found"}), 404
+
+
+@app.route('/logs', methods=['GET'])
+def view_logs():
+    try:
+        log_path = "app.log"
+        if not os.path.exists(log_path):
+            return jsonify({"error": "Log file not found"}), 404
+
+        with open(log_path, 'r') as log_file:
+            lines = log_file.readlines()[-100:]  # Return last 100 log lines
+            return jsonify({"log": ''.join(lines)}), 200
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve logs: {e}")
+        return jsonify({"error": "Could not retrieve logs"}), 500
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
