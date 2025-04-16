@@ -59,7 +59,7 @@ def generate_pdf(data):
 def create_pdf():
     try:
         logger.debug('Raw request data: %s', request.data.decode('utf-8'))
-        data = request.get_json()
+        data = request.get_json(force=True)
         if not data:
             logger.warning('No data provided in request.')
             return jsonify({"error": "No data provided"}), 400
