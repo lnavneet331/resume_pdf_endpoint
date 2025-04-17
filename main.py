@@ -3,17 +3,25 @@ import requests
 import json
 import base64
 import re
+import time
 
 # Streamlit app configuration
 st.set_page_config(page_title="Resume Tailor", layout="wide")
-st.title("Tailor Your Resume with AI")
-st.markdown("Enter a job description and a URL to your resume PDF (Google Drive normal or direct download link) to get a tailored resume (JSON format) powered by Make.com AI Agent.")
+st.title("Resume Tailor AI")
+st.markdown("Get your resume tailored specifically for your target job in just a few seconds.")
 
 # Form for user inputs
 with st.form(key="resume_form"):
-    job_description = st.text_area("Job Description", placeholder="e.g., Seeking a Data Scientist with expertise in Python, SQL, and machine learning...", height=150)
-    file_url = st.text_input("Resume File URL", placeholder="e.g., https://drive.google.com/file/d/your-file-id/view?usp=sharing or https://drive.google.com/uc?export=download&id=your-file-id")
-    submit_button = st.form_submit_button("Tailor Resume")
+    job_description = st.text_area(
+        "Job Description",
+        placeholder="Paste the complete job description here...",
+        height=150
+    )
+    file_url = st.text_input(
+        "Resume URL",
+        placeholder="Enter Google Drive link to your resume (make sure it's set to public)"
+    )
+    submit_button = st.form_submit_button("Tailor My Resume")
 
 # Function to convert Google Drive normal link to direct download link
 def convert_google_drive_url(url):
@@ -47,20 +55,16 @@ def call_make_webhook(job_description, file_url, webhook_url):
         "job_description": job_description,
         "file_url": file_url
     }
-    st.write("Sending payload:", payload)  # Debug: Show payload
     try:
-        response = requests.post(webhook_url, headers=headers, json=payload, timeout=30)
+        response = requests.post(webhook_url, headers=headers, json=payload, timeout=60)
         response.raise_for_status()
         # Try to parse JSON, but handle non-JSON responses
         try:
             return response.json()
         except ValueError:
-            return {"error": f"Invalid JSON response: {response.text}"}
+            return {"error": "Could not process the response. Please try again."}
     except requests.RequestException as e:
-        error_msg = f"Failed to connect to Make webhook. Details: {str(e)}"
-        if 'response' in locals():
-            error_msg += f"\nResponse: {response.text}"
-        return {"error": error_msg}
+        return {"error": "Connection issue. Please check your internet and try again."}
 
 # Process form submission
 if submit_button:
@@ -73,35 +77,108 @@ if submit_button:
         converted_url = convert_google_drive_url(file_url)
         # Check if the URL is a Google Drive link (normal or direct)
         if not ("drive.google.com" in converted_url):
-            st.error("Please provide a Google Drive URL (normal or direct download link).")
+            st.error("Please use a Google Drive link to your resume.")
         else:
             # Your Make webhook URL
-            WEBHOOK_URL = "https://hook.eu2.make.com/62o1ojangdlx7mlddd2ayq2r6wbk5rva"  # Replace if you have a new URL
+            WEBHOOK_URL = "https://hook.eu2.make.com/62o1ojangdlx7mlddd2ayq2r6wbk5rva"
             
-            with st.spinner("Tailoring your resume..."):
+            # Display progress
+            progress_placeholder = st.empty()
+            with progress_placeholder.container():
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                # Simulate progress stages
+                status_text.write("Reading your resume...")
+                progress_bar.progress(25)
+                time.sleep(1)
+                
+                status_text.write("Analyzing job requirements...")
+                progress_bar.progress(50)
+                time.sleep(1)
+                
+                status_text.write("Tailoring your resume...")
+                progress_bar.progress(75)
+                time.sleep(1)
+                
+                # Make the actual API call
                 result = call_make_webhook(job_description, converted_url, WEBHOOK_URL)
+                
+                status_text.write("Finalizing your tailored resume...")
+                progress_bar.progress(100)
+                time.sleep(1)
+            
+            # Clear the progress display
+            progress_placeholder.empty()
             
             if "error" in result:
                 st.error(result["error"])
             else:
-                st.success("Resume tailored successfully!")
-                st.subheader("Tailored Resume (JSON)")
-                st.json(result)
+                st.success("Your resume has been successfully tailored!")
                 
-                # Download button for the tailored resume JSON
+                # Create tabs for different views
+                tab1, tab2 = st.tabs(["Preview", "JSON Data"])
+                
+                with tab1:
+                    st.subheader("Resume Preview")
+                    # Display a preview of key sections from the JSON
+                    if "name" in result:
+                        st.write(f"**Name:** {result['name']}")
+                    if "skills" in result:
+                        st.write("**Skills:**", ", ".join(result["skills"]))
+                    if "experience" in result and isinstance(result["experience"], list) and len(result["experience"]) > 0:
+                        st.write("**Selected Experience:**")
+                        exp = result["experience"][0]
+                        st.write(f"- {exp.get('designation', '')} at {exp.get('company', '')}")
+                
+                with tab2:
+                    st.json(result)
+                
+                # Create download button for JSON
                 result_str = json.dumps(result, indent=2)
                 result_bytes = result_str.encode("utf-8")
                 b64 = base64.b64encode(result_bytes).decode()
-                href = f'<a href="data:application/json;base64,{b64}" download="tailored_resume.json">Download Tailored Resume JSON</a>'
-                st.markdown(href, unsafe_allow_html=True)
+                
+                download_button = f'''
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="data:application/json;base64,{b64}" 
+                       download="tailored_resume.json" 
+                       style="background-color: #4CAF50; 
+                              color: white; 
+                              padding: 12px 24px; 
+                              text-align: center; 
+                              text-decoration: none; 
+                              display: inline-block; 
+                              font-size: 16px; 
+                              margin: 4px 2px; 
+                              border-radius: 8px;">
+                        Download Resume Data
+                    </a>
+                </div>
+                '''
+                st.markdown(download_button, unsafe_allow_html=True)
+                
+                # Add a next steps section
+                st.subheader("Next Steps")
+                st.info("""
+                1. Download your tailored resume data
+                2. Use our Resume Generator API to create a formatted document
+                3. Review and make any final adjustments before submission
+                """)
 
-# Instructions for setup
-st.sidebar.header("Setup Instructions")
+# Simple instructions in the sidebar
+st.sidebar.header("How It Works")
 st.sidebar.markdown("""
-1. Ensure the Make.com webhook at `https://hook.eu2.make.com/62o1ojangdlx7mlddd2ayq2r6wbk5rva` is active and linked to the 'Resume Tailor' scenario.
-2. Update `WEBHOOK_URL` with the new webhook URL if recreated.
-3. Install dependencies: `pip install streamlit requests`.
-4. Run the app: `streamlit run app.py`.
-5. Use a Google Drive normal link (e.g., https://drive.google.com/file/d/your-file-id/view) or direct download link (e.g., https://drive.google.com/uc?export=download&id=your-file-id).
-6. Check Make.com execution logs if errors persist.
+1. **Paste the job description** - Include the full text for best results
+2. **Enter your resume URL** - Must be a public Google Drive link
+3. **Click 'Tailor My Resume'** - Our AI will customize your resume for this specific job
+4. **Download the result** - Use the download button to save your tailored resume data
 """)
+
+# Add a footer with minimal attribution
+st.markdown("""
+---
+<div style="text-align: center; color: #888; font-size: 12px;">
+Powered by AI Resume Tailoring Technology
+</div>
+""", unsafe_allow_html=True)
