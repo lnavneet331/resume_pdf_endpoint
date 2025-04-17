@@ -118,11 +118,11 @@ if submit_button:
 
                 if resume_file:
                     st.download_button(
-                        label="Download Your Tailored Resume",
-                        data=resume_file,
-                        file_name="Tailored_Resume.pdf",
-                        mime="application/pdf"
-                    )
+                    label="Download Your Tailored Resume",
+                    data=resume_file,
+                    file_name="Tailored_Resume.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+)
                 else:
                     st.error("Failed to fetch the resume file. Please try again later.")
 
