@@ -2,4 +2,4 @@ Flask
 reportlab
 requests
 streamlit
-pip install python-docx
+python-docx
