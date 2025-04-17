@@ -1,4 +1,6 @@
 import os
+import re
+import json
 import logging
 from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
@@ -11,7 +13,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler("app.log"),  # Save logs to a file
-        logging.StreamHandler()         # Also log to console
+        logging.StreamHandler()          # Also log to console
     ]
 )
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ def home():
 
 def draw_wrapped_text(c, text, x, y, max_width, line_height):
     """Helper function to wrap long text into lines"""
-    lines = wrap(text, width=95)  # Tune as needed for your layout
+    lines = wrap(text, width=95)
     for line in lines:
         if y <= 50:
             c.showPage()
@@ -91,12 +93,22 @@ def generate_pdf(data):
 @app.route('/generate_pdf', methods=['POST'])
 def create_pdf():
     try:
-        logger.debug('Raw request data: %s', request.data.decode('utf-8'))
-        data = request.get_json(force=True)
+        # Read raw request body
+        raw_data = request.data.decode('utf-8')
+        logger.debug('Raw request data: %s', raw_data)
+
+        # Strip markdown code fences if present
+        raw_data = re.sub(r'^```(?:json)?\s*', '', raw_data)
+        raw_data = re.sub(r'\s*```$', '', raw_data)
+        logger.debug('Cleaned request data: %s', raw_data)
+
+        # Parse JSON
+        data = json.loads(raw_data)
         if not data:
-            logger.warning('No JSON data received')
+            logger.warning('No JSON data after cleaning')
             return jsonify({"error": "No data provided"}), 400
 
+        # Generate PDF from cleaned JSON
         generate_pdf(data)
         preview_url = request.host_url.rstrip('/') + '/preview_resume'
         return jsonify({
@@ -127,7 +139,7 @@ def view_logs():
             return jsonify({"error": "Log file not found"}), 404
 
         with open(log_path, 'r') as log_file:
-            lines = log_file.readlines()[-100:]  # Return last 100 log lines
+            lines = log_file.readlines()[-100:]
             return jsonify({"log": ''.join(lines)}), 200
 
     except Exception as e:
