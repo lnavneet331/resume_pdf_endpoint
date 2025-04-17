@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import json
-import base64
 import re
 import time
 
@@ -116,55 +115,33 @@ if submit_button:
             else:
                 st.success("Your resume has been successfully tailored!")
                 
-                # Create tabs for different views
-                tab1, tab2 = st.tabs(["Preview", "JSON Data"])
+                # Extract the download URL from the response
+                download_url = result.get("download_url", "")
                 
-                with tab1:
-                    st.subheader("Resume Preview")
-                    # Display a preview of key sections from the JSON
-                    if "name" in result:
-                        st.write(f"**Name:** {result['name']}")
-                    if "skills" in result:
-                        st.write("**Skills:**", ", ".join(result["skills"]))
-                    if "experience" in result and isinstance(result["experience"], list) and len(result["experience"]) > 0:
-                        st.write("**Selected Experience:**")
-                        exp = result["experience"][0]
-                        st.write(f"- {exp.get('designation', '')} at {exp.get('company', '')}")
-                
-                with tab2:
-                    st.json(result)
-                
-                # Create download button for JSON
-                result_str = json.dumps(result, indent=2)
-                result_bytes = result_str.encode("utf-8")
-                b64 = base64.b64encode(result_bytes).decode()
-                
-                download_button = f'''
-                <div style="text-align: center; margin-top: 25px;">
-                    <a href="data:application/json;base64,{b64}" 
-                       download="tailored_resume.json" 
-                       style="background-color: #4CAF50; 
-                              color: white; 
-                              padding: 12px 24px; 
-                              text-align: center; 
-                              text-decoration: none; 
-                              display: inline-block; 
-                              font-size: 16px; 
-                              margin: 4px 2px; 
-                              border-radius: 8px;">
-                        Download Resume Data
-                    </a>
-                </div>
-                '''
-                st.markdown(download_button, unsafe_allow_html=True)
-                
-                # Add a next steps section
-                st.subheader("Next Steps")
-                st.info("""
-                1. Download your tailored resume data
-                2. Use our Resume Generator API to create a formatted document
-                3. Review and make any final adjustments before submission
-                """)
+                if download_url:
+                    # Create a direct download button using HTML
+                    st.markdown(f"""
+                    <div style="text-align: center; margin-top: 25px; margin-bottom: 30px;">
+                        <a href="{download_url}" 
+                           target="_blank"
+                           style="background-color: #4CAF50; 
+                                  color: white; 
+                                  padding: 12px 24px; 
+                                  text-align: center; 
+                                  text-decoration: none; 
+                                  display: inline-block; 
+                                  font-size: 16px; 
+                                  margin: 4px 2px; 
+                                  border-radius: 8px;">
+                            Download Your Resume
+                        </a>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Add informational text about what to expect
+                    st.info("Click the button above to download your tailored resume document.")
+                else:
+                    st.error("No download URL was provided in the response. Please try again.")
 
 # Simple instructions in the sidebar
 st.sidebar.header("How It Works")
@@ -172,7 +149,7 @@ st.sidebar.markdown("""
 1. **Paste the job description** - Include the full text for best results
 2. **Enter your resume URL** - Must be a public Google Drive link
 3. **Click 'Tailor My Resume'** - Our AI will customize your resume for this specific job
-4. **Download the result** - Use the download button to save your tailored resume data
+4. **Download your resume** - Click the download button to get your tailored resume
 """)
 
 # Add a footer with minimal attribution
