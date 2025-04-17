@@ -6,24 +6,30 @@ from flask import Flask, request, jsonify, send_file
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from textwrap import wrap
-from docx import Document
 
-# Setup logging
+# Setup logging to file and console
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("app.log"), logging.StreamHandler()]
+    handlers=[
+        logging.FileHandler("app.log"),  # Save logs to a file
+        logging.StreamHandler()          # Also log to console
+    ]
 )
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-BASE_DIR = os.path.dirname(__file__)
-PDF_FILENAME = os.path.join(BASE_DIR, "generated_resume.pdf")
-DOCX_FILENAME = os.path.join(BASE_DIR, "generated_resume.docx")
-TEMPLATE_PATH = os.path.join(BASE_DIR, "template.docx")
+PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
+
+
+@app.route('/')
+def home():
+    logger.info('Home route accessed.')
+    return 'Welcome to the Resume PDF Generator API!'
 
 
 def draw_wrapped_text(c, text, x, y, max_width, line_height):
+    """Helper function to wrap long text into lines"""
     lines = wrap(text, width=95)
     for line in lines:
         if y <= 50:
@@ -46,6 +52,7 @@ def generate_pdf(data):
         c.drawString(50, y, "Resume - Data Science Intern")
         y -= 30
 
+        # Skills
         c.setFont("Helvetica-Bold", 12)
         c.drawString(50, y, "Skills:")
         y -= 15
@@ -54,6 +61,7 @@ def generate_pdf(data):
             c.drawString(70, y, f"- {skill}")
             y -= 15
 
+        # Internships
         for internship in data.get("internship", []):
             y -= 20
             c.setFont("Helvetica-Bold", 12)
@@ -62,6 +70,7 @@ def generate_pdf(data):
             c.setFont("Helvetica", 12)
             y = draw_wrapped_text(c, internship.get("description", ""), 60, y, width - 100, 15)
 
+        # Projects
         for key in ["project_1", "project_2"]:
             project = data.get(key)
             if project:
@@ -73,107 +82,69 @@ def generate_pdf(data):
                 y = draw_wrapped_text(c, project.get("description", ""), 60, y, width - 100, 15)
 
         c.save()
-        logger.info(f'PDF saved at {PDF_FILENAME}')
+        logger.info(f'PDF successfully saved at: {PDF_FILENAME}')
+        return PDF_FILENAME
+
     except Exception as e:
-        logger.error(f"Error generating PDF: {e}")
+        logger.error(f"Exception in generate_pdf: {e}")
         raise
 
 
-def generate_docx(data):
+@app.route('/generate_pdf', methods=['POST'])
+def create_pdf():
     try:
-        logger.info("Generating DOCX...")
-        doc = Document(TEMPLATE_PATH)
-
-        replacements = {
-            '{{name}}': data['name'],
-            '{{phone}}': data['phone'],
-            '{{email}}': data['email'],
-            '{{linkedin}}': data['linkedin'],
-            '{{skills}}': ', '.join(data['skills']),
-            '{{certification}}': data['certification'],
-            '{{experience[0].designation}}': data['experience'][0]['designation'],
-            '{{experience[0].dates}}': data['experience'][0]['dates'],
-            '{{experience[0].company}}': data['experience'][0]['company'],
-            '{{experience[0].city}}': data['experience'][0]['city'],
-            '{{experience[0].1stbullet}}': data['experience'][0]['1stbullet'],
-            '{{experience[0].2ndbullet}}': data['experience'][0]['2ndbullet'],
-            '{{project[0].name}}': data['project'][0]['name'],
-            '{{project[0].dates}}': data['project'][0]['dates'],
-            '{{project[0].1stbullet}}': data['project'][0]['1stbullet'],
-            '{{project[0].2ndbullet}}': data['project'][0]['2ndbullet'],
-            '{{project[0].3dbullet}}': data['project'][0]['3dbullet'],
-            '{{project[0].4thbullet}}': data['project'][0]['4thbullet'],
-            '{{project[0].link}}': data['project'][0]['link'],
-            '{{project[1].name}}': data['project'][1]['name'],
-            '{{project[1].dates}}': data['project'][1]['dates'],
-            '{{project[1].1stbullet}}': data['project'][1]['1stbullet'],
-            '{{project[1].2ndbullet}}': data['project'][1]['2ndbullet'],
-            '{{project[1].3dbullet}}': data['project'][1]['3dbullet'],
-            '{{project[1].4thbullet}}': data['project'][1]['4thbullet'],
-            '{{project[1].link}}': data['project'][1]['link'],
-            '{{education[0].branch}}': data['education'][0]['branch'],
-            '{{education[0].cgpa}}': data['education'][0]['cgpa'],
-            '{{responsibilities[0].name, responsibilities[0].organization}}': f"{data['responsibilities'][0]['name']}, {data['responsibilities'][0]['organization']}",
-            '{{responsibilities[0].bullet}}': data['responsibilities'][0]['bullet'],
-            '{{responsibilities[1].name, responsibilities[1].organization}}': f"{data['responsibilities'][1]['name']}, {data['responsibilities'][1]['organization']}",
-        }
-
-        for paragraph in doc.paragraphs:
-            for placeholder, replacement in replacements.items():
-                for run in paragraph.runs:
-                    if placeholder in run.text:
-                        run.text = run.text.replace(placeholder, replacement)
-
-        doc.save(DOCX_FILENAME)
-        logger.info(f'DOCX saved at {DOCX_FILENAME}')
-    except Exception as e:
-        logger.error(f"Error generating DOCX: {e}")
-        raise
-
-
-@app.route('/')
-def home():
-    return 'Welcome to the Resume Generator API!'
-
-
-@app.route('/generate_resume', methods=['POST'])
-def generate_resume():
-    try:
+        # Read raw request body
         raw_data = request.data.decode('utf-8')
+        logger.debug('Raw request data: %s', raw_data)
+
+        # Strip markdown code fences if present
         raw_data = re.sub(r'^```(?:json)?\s*', '', raw_data)
         raw_data = re.sub(r'\s*```$', '', raw_data)
-        data = json.loads(raw_data)
+        logger.debug('Cleaned request data: %s', raw_data)
 
+        # Parse JSON
+        data = json.loads(raw_data)
         if not data:
+            logger.warning('No JSON data after cleaning')
             return jsonify({"error": "No data provided"}), 400
 
+        # Generate PDF from cleaned JSON
         generate_pdf(data)
-        generate_docx(data)
-
-        base_url = request.host_url.rstrip('/')
+        preview_url = request.host_url.rstrip('/') + '/preview_resume'
         return jsonify({
-            "message": "Resume generated successfully!",
-            "pdf_url": f"{base_url}/download_pdf",
-            "docx_url": f"{base_url}/download_docx"
+            "message": "PDF generated successfully!",
+            "preview_url": preview_url
         }), 200
 
     except Exception as e:
-        logger.exception("Resume generation failed")
-        return jsonify({"error": "Resume generation failed", "details": str(e)}), 500
+        logger.exception("Error in /generate_pdf")
+        return jsonify({"error": "PDF generation failed", "details": str(e)}), 500
 
 
-@app.route('/download_pdf')
-def download_pdf():
+@app.route('/preview_resume', methods=['GET'])
+def preview_resume():
     if os.path.exists(PDF_FILENAME):
-        return send_file(PDF_FILENAME, as_attachment=True)
-    return jsonify({"error": "PDF not found"}), 404
+        logger.info('Serving generated resume PDF')
+        return send_file(PDF_FILENAME, mimetype='application/pdf')
+    else:
+        logger.warning('PDF not found for preview')
+        return jsonify({"error": "PDF not found"}), 404
 
 
-@app.route('/download_docx')
-def download_docx():
-    if os.path.exists(DOCX_FILENAME):
-        return send_file(DOCX_FILENAME, as_attachment=True)
-    return jsonify({"error": "DOCX not found"}), 404
+@app.route('/logs', methods=['GET'])
+def view_logs():
+    try:
+        log_path = "app.log"
+        if not os.path.exists(log_path):
+            return jsonify({"error": "Log file not found"}), 404
+
+        with open(log_path, 'r') as log_file:
+            lines = log_file.readlines()[-100:]
+            return jsonify({"log": ''.join(lines)}), 200
+
+    except Exception as e:
+        logger.error(f"Failed to retrieve logs: {e}")
+        return jsonify({"error": "Could not retrieve logs"}), 500
 
 
 if __name__ == '__main__':
