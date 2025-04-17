@@ -27,33 +27,71 @@ def home():
     logger.info('Home route accessed.')
     return 'Welcome to the Resume DOCX Generator API!'
 
-def replace_placeholders(paragraph, replacements):
-    """Replace placeholder text in a paragraph"""
-    for placeholder, value in replacements.items():
-        if placeholder in paragraph.text:
-            paragraph.text = paragraph.text.replace(placeholder, str(value))
+def replace_placeholder_with_format(paragraph, placeholder, value):
+    """Replace placeholder while preserving formatting"""
+    if placeholder not in paragraph.text:
+        return
+
+    # Get the text runs that contain parts of the placeholder
+    placeholder_runs = []
+    placeholder_text = ""
+    
+    for i, run in enumerate(paragraph.runs):
+        if placeholder in paragraph.runs[i].text:
+            placeholder_runs.append(i)
+            placeholder_text += paragraph.runs[i].text
+        elif placeholder_runs and placeholder in placeholder_text:
+            break
+
+    if not placeholder_runs:
+        return
+
+    # Replace only in the first run that contains the placeholder
+    first_run_index = placeholder_runs[0]
+    run = paragraph.runs[first_run_index]
+    
+    # Store the original formatting
+    original_font = run.font
+    original_bold = run.bold
+    original_italic = run.italic
+    original_underline = run.underline
+    
+    # Replace the text
+    new_text = run.text.replace(placeholder, str(value))
+    run.text = new_text
+    
+    # Clear the content of other runs that had parts of the placeholder
+    for i in placeholder_runs[1:]:
+        paragraph.runs[i].text = ""
+
+def replace_all_placeholders(doc, replacements):
+    """Replace all placeholders in the document"""
+    # Process all paragraphs in the document
+    for paragraph in doc.paragraphs:
+        for placeholder, value in replacements.items():
+            replace_placeholder_with_format(paragraph, placeholder, value)
+    
+    # Process table cells if any
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for placeholder, value in replacements.items():
+                        replace_placeholder_with_format(paragraph, placeholder, value)
 
 def generate_docx(data):
     try:
         logger.info('Generating DOCX...')
         
-        # Check if template exists, otherwise create a basic one
-        if os.path.exists(TEMPLATE_PATH):
-            doc = Document(TEMPLATE_PATH)
-            logger.info(f'Using existing template at: {TEMPLATE_PATH}')
-        else:
-            logger.info('Template not found, creating basic document')
-            doc = Document()
-            # Create a basic template
-            doc.add_heading('Resume - Data Science Intern', 0)
-            doc.add_heading('Skills', level=1)
-            doc.add_paragraph('{{skills}}')
-            doc.add_heading('Experience', level=1)
-            doc.add_paragraph('{{experience[0].designation}} at {{experience[0].company}} ({{experience[0].dates}})')
-            doc.add_paragraph('{{experience[0].1stbullet}}')
-            doc.add_paragraph('{{experience[0].2ndbullet}}')
-            # Add more default sections as needed
-            
+        # Check if template exists
+        if not os.path.exists(TEMPLATE_PATH):
+            logger.error(f'Template not found at: {TEMPLATE_PATH}')
+            raise FileNotFoundError(f"Template file not found: {TEMPLATE_PATH}")
+        
+        # Load the template
+        doc = Document(TEMPLATE_PATH)
+        logger.info(f'Template loaded from: {TEMPLATE_PATH}')
+        
         # Prepare replacements dictionary
         replacements = {
             '{{name}}': data.get('name', ''),
@@ -99,17 +137,9 @@ def generate_docx(data):
             replacements[f'{{{{responsibilities[{i}].name, responsibilities[{i}].organization}}}}'] = f"{name}, {org}"
             replacements[f'{{{{responsibilities[{i}].bullet}}}}'] = resp.get('bullet', '')
             
-        # Process all paragraphs in the document
-        for paragraph in doc.paragraphs:
-            replace_placeholders(paragraph, replacements)
-            
-        # Process table cells if any
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        replace_placeholders(paragraph, replacements)
-                        
+        # Replace all placeholders
+        replace_all_placeholders(doc, replacements)
+        
         # Save the document
         doc.save(DOCX_FILENAME)
         logger.info(f'DOCX successfully saved at: {DOCX_FILENAME}')
