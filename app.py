@@ -3,9 +3,9 @@ import re
 import json
 import logging
 from flask import Flask, request, jsonify, send_file
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from textwrap import wrap
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 # Setup logging to file and console
 logging.basicConfig(
@@ -19,79 +19,108 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-PDF_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.pdf")
-
+DOCX_FILENAME = os.path.join(os.path.dirname(__file__), "generated_resume.docx")
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "template.docx")
 
 @app.route('/')
 def home():
     logger.info('Home route accessed.')
-    return 'Welcome to the Resume PDF Generator API!'
+    return 'Welcome to the Resume DOCX Generator API!'
 
+def replace_placeholders(paragraph, replacements):
+    """Replace placeholder text in a paragraph"""
+    for placeholder, value in replacements.items():
+        if placeholder in paragraph.text:
+            paragraph.text = paragraph.text.replace(placeholder, str(value))
 
-def draw_wrapped_text(c, text, x, y, max_width, line_height):
-    """Helper function to wrap long text into lines"""
-    lines = wrap(text, width=95)
-    for line in lines:
-        if y <= 50:
-            c.showPage()
-            y = 750
-            c.setFont("Helvetica", 12)
-        c.drawString(x, y, line)
-        y -= line_height
-    return y
-
-
-def generate_pdf(data):
+def generate_docx(data):
     try:
-        logger.info('Generating PDF...')
-        c = canvas.Canvas(PDF_FILENAME, pagesize=letter)
-        width, height = letter
-        y = height - 50
-
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, y, "Resume - Data Science Intern")
-        y -= 30
-
-        # Skills
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, "Skills:")
-        y -= 15
-        c.setFont("Helvetica", 12)
-        for skill in data.get("skills", []):
-            c.drawString(70, y, f"- {skill}")
-            y -= 15
-
-        # Internships
-        for internship in data.get("internship", []):
-            y -= 20
-            c.setFont("Helvetica-Bold", 12)
-            c.drawString(50, y, f"{internship.get('title', '')} at {internship.get('company', '')} ({internship.get('dates', '')})")
-            y -= 15
-            c.setFont("Helvetica", 12)
-            y = draw_wrapped_text(c, internship.get("description", ""), 60, y, width - 100, 15)
-
-        # Projects
-        for key in ["project_1", "project_2"]:
-            project = data.get(key)
-            if project:
-                y -= 20
-                c.setFont("Helvetica-Bold", 12)
-                c.drawString(50, y, f"{project.get('project_name', '')} ({project.get('dates', '')})")
-                y -= 15
-                c.setFont("Helvetica", 12)
-                y = draw_wrapped_text(c, project.get("description", ""), 60, y, width - 100, 15)
-
-        c.save()
-        logger.info(f'PDF successfully saved at: {PDF_FILENAME}')
-        return PDF_FILENAME
+        logger.info('Generating DOCX...')
+        
+        # Check if template exists, otherwise create a basic one
+        if os.path.exists(TEMPLATE_PATH):
+            doc = Document(TEMPLATE_PATH)
+            logger.info(f'Using existing template at: {TEMPLATE_PATH}')
+        else:
+            logger.info('Template not found, creating basic document')
+            doc = Document()
+            # Create a basic template
+            doc.add_heading('Resume - Data Science Intern', 0)
+            doc.add_heading('Skills', level=1)
+            doc.add_paragraph('{{skills}}')
+            doc.add_heading('Experience', level=1)
+            doc.add_paragraph('{{experience[0].designation}} at {{experience[0].company}} ({{experience[0].dates}})')
+            doc.add_paragraph('{{experience[0].1stbullet}}')
+            doc.add_paragraph('{{experience[0].2ndbullet}}')
+            # Add more default sections as needed
+            
+        # Prepare replacements dictionary
+        replacements = {
+            '{{name}}': data.get('name', ''),
+            '{{phone}}': data.get('phone', ''),
+            '{{email}}': data.get('email', ''),
+            '{{linkedin}}': data.get('linkedin', ''),
+            '{{skills}}': ', '.join(data.get('skills', [])),
+            '{{certification}}': data.get('certification', '')
+        }
+        
+        # Handle experience section
+        experiences = data.get('experience', [])
+        for i, exp in enumerate(experiences):
+            replacements[f'{{{{experience[{i}].designation}}}}'] = exp.get('designation', '')
+            replacements[f'{{{{experience[{i}].dates}}}}'] = exp.get('dates', '')
+            replacements[f'{{{{experience[{i}].company}}}}'] = exp.get('company', '')
+            replacements[f'{{{{experience[{i}].city}}}}'] = exp.get('city', '')
+            replacements[f'{{{{experience[{i}].1stbullet}}}}'] = exp.get('1stbullet', '')
+            replacements[f'{{{{experience[{i}].2ndbullet}}}}'] = exp.get('2ndbullet', '')
+            
+        # Handle project section
+        projects = data.get('project', [])
+        for i, proj in enumerate(projects):
+            replacements[f'{{{{project[{i}].name}}}}'] = proj.get('name', '')
+            replacements[f'{{{{project[{i}].dates}}}}'] = proj.get('dates', '')
+            replacements[f'{{{{project[{i}].1stbullet}}}}'] = proj.get('1stbullet', '')
+            replacements[f'{{{{project[{i}].2ndbullet}}}}'] = proj.get('2ndbullet', '')
+            replacements[f'{{{{project[{i}].3dbullet}}}}'] = proj.get('3dbullet', '')
+            replacements[f'{{{{project[{i}].4thbullet}}}}'] = proj.get('4thbullet', '')
+            replacements[f'{{{{project[{i}].link}}}}'] = proj.get('link', '')
+            
+        # Handle education section
+        education = data.get('education', [])
+        for i, edu in enumerate(education):
+            replacements[f'{{{{education[{i}].branch}}}}'] = edu.get('branch', '')
+            replacements[f'{{{{education[{i}].cgpa}}}}'] = edu.get('cgpa', '')
+            
+        # Handle responsibilities section
+        responsibilities = data.get('responsibilities', [])
+        for i, resp in enumerate(responsibilities):
+            name = resp.get('name', '')
+            org = resp.get('organization', '')
+            replacements[f'{{{{responsibilities[{i}].name, responsibilities[{i}].organization}}}}'] = f"{name}, {org}"
+            replacements[f'{{{{responsibilities[{i}].bullet}}}}'] = resp.get('bullet', '')
+            
+        # Process all paragraphs in the document
+        for paragraph in doc.paragraphs:
+            replace_placeholders(paragraph, replacements)
+            
+        # Process table cells if any
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for paragraph in cell.paragraphs:
+                        replace_placeholders(paragraph, replacements)
+                        
+        # Save the document
+        doc.save(DOCX_FILENAME)
+        logger.info(f'DOCX successfully saved at: {DOCX_FILENAME}')
+        return DOCX_FILENAME
 
     except Exception as e:
-        logger.error(f"Exception in generate_pdf: {e}")
+        logger.error(f"Exception in generate_docx: {e}")
         raise
 
-
-@app.route('/generate_pdf', methods=['POST'])
-def create_pdf():
+@app.route('/generate_docx', methods=['POST'])
+def create_docx():
     try:
         # Read raw request body
         raw_data = request.data.decode('utf-8')
@@ -108,28 +137,29 @@ def create_pdf():
             logger.warning('No JSON data after cleaning')
             return jsonify({"error": "No data provided"}), 400
 
-        # Generate PDF from cleaned JSON
-        generate_pdf(data)
-        preview_url = request.host_url.rstrip('/') + '/preview_resume'
+        # Generate DOCX from cleaned JSON
+        generate_docx(data)
+        download_url = request.host_url.rstrip('/') + '/download_resume'
         return jsonify({
-            "message": "PDF generated successfully!",
-            "preview_url": preview_url
+            "message": "DOCX generated successfully!",
+            "download_url": download_url
         }), 200
 
     except Exception as e:
-        logger.exception("Error in /generate_pdf")
-        return jsonify({"error": "PDF generation failed", "details": str(e)}), 500
+        logger.exception("Error in /generate_docx")
+        return jsonify({"error": "DOCX generation failed", "details": str(e)}), 500
 
-
-@app.route('/preview_resume', methods=['GET'])
-def preview_resume():
-    if os.path.exists(PDF_FILENAME):
-        logger.info('Serving generated resume PDF')
-        return send_file(PDF_FILENAME, mimetype='application/pdf')
+@app.route('/download_resume', methods=['GET'])
+def download_resume():
+    if os.path.exists(DOCX_FILENAME):
+        logger.info('Serving generated resume DOCX')
+        return send_file(DOCX_FILENAME, 
+                         mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                         as_attachment=True,
+                         download_name='resume.docx')
     else:
-        logger.warning('PDF not found for preview')
-        return jsonify({"error": "PDF not found"}), 404
-
+        logger.warning('DOCX not found for download')
+        return jsonify({"error": "DOCX not found"}), 404
 
 @app.route('/logs', methods=['GET'])
 def view_logs():
@@ -145,7 +175,6 @@ def view_logs():
     except Exception as e:
         logger.error(f"Failed to retrieve logs: {e}")
         return jsonify({"error": "Could not retrieve logs"}), 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
