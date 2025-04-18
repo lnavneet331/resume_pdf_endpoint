@@ -1,0 +1,20 @@
+name: 🔄 Keep Resume API Alive
+on:
+  schedule:
+    - cron: '*/2 * * * *'   # Runs every 2 minutes
+  workflow_dispatch: # Adds manual trigger button in GitHub UI
+jobs:
+  ping-service:
+    name: 📡 Ping Resume PDF Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Send Request to API
+        run: |
+          echo "⏰ $(date): Sending ping to keep service alive..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://resume-pdf-endpoint.onrender.com/)
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "✅ Service is alive and responsive! Status code: $HTTP_STATUS"
+          else
+            echo "⚠️ Warning: Service returned status code: $HTTP_STATUS"
+          fi
+          echo "🏁 Ping operation completed at $(date)"
