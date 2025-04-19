@@ -28,48 +28,52 @@ def home():
     return 'Welcome to the Resume DOCX Generator API!'
 
 def replace_placeholder_with_format(paragraph, placeholder, value):
-    """Replace placeholder while preserving formatting"""
+    """Replace placeholder while preserving formatting, including across multiple runs."""
     if placeholder not in paragraph.text:
         return
 
-    # Get the text runs that contain parts of the placeholder
-    placeholder_runs = []
-    placeholder_text = ""
-    
-    for i, run in enumerate(paragraph.runs):
-        if placeholder in paragraph.runs[i].text:
-            placeholder_runs.append(i)
-            placeholder_text += paragraph.runs[i].text
-        elif placeholder_runs and placeholder in placeholder_text:
-            break
-
-    if not placeholder_runs:
+    # Combine all runs' text to find the placeholder
+    full_text = ''.join(run.text for run in paragraph.runs)
+    if placeholder not in full_text:
         return
 
-    # Replace only in the first run that contains the placeholder
-    first_run_index = placeholder_runs[0]
-    run = paragraph.runs[first_run_index]
-    
-    # Store the original formatting
-    original_font = run.font
-    original_bold = run.bold
-    original_italic = run.italic
-    original_underline = run.underline
-    
-    # Replace the text
-    new_text = run.text.replace(placeholder, str(value))
-    run.text = new_text
-    
-    # Clear the content of other runs that had parts of the placeholder
-    for i in placeholder_runs[1:]:
-        paragraph.runs[i].text = ""
+    # Replace the placeholder in the combined text
+    full_text = full_text.replace(placeholder, str(value))
+
+    # Preserve the formatting of the first run
+    first_run = paragraph.runs[0]
+    formatting = {
+        "bold": first_run.bold,
+        "italic": first_run.italic,
+        "underline": first_run.underline,
+        "font_name": first_run.font.name,
+        "font_size": first_run.font.size,
+        "color": first_run.font.color.rgb,
+    }
+
+    # Clear all runs
+    for run in paragraph.runs:
+        run.text = ""
+
+    # Reassign the modified text to the first run and apply formatting
+    first_run.text = full_text
+    first_run.bold = formatting["bold"]
+    first_run.italic = formatting["italic"]
+    first_run.underline = formatting["underline"]
+    if formatting["font_name"]:
+        first_run.font.name = formatting["font_name"]
+    if formatting["font_size"]:
+        first_run.font.size = formatting["font_size"]
+    if formatting["color"]:
+        first_run.font.color.rgb = formatting["color"]
 
 def replace_all_placeholders(doc, replacements):
     """Replace all placeholders in the document"""
     # Process all paragraphs in the document
     for paragraph in doc.paragraphs:
         for placeholder, value in replacements.items():
-            replace_placeholder_with_format(paragraph, placeholder, value)
+            if placeholder in paragraph.text:
+                replace_placeholder_with_format(paragraph, placeholder, value)
     
     # Process table cells if any
     for table in doc.tables:
@@ -77,7 +81,13 @@ def replace_all_placeholders(doc, replacements):
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
                     for placeholder, value in replacements.items():
-                        replace_placeholder_with_format(paragraph, placeholder, value)
+                        if placeholder in paragraph.text:
+                            replace_placeholder_with_format(paragraph, placeholder, value)
+
+    # Log placeholders that were not replaced
+    for placeholder in replacements.keys():
+        if any(placeholder in paragraph.text for paragraph in doc.paragraphs):
+            logger.warning(f"Placeholder '{placeholder}' was not replaced in the document.")
 
 def generate_docx(data):
     try:
@@ -91,6 +101,11 @@ def generate_docx(data):
         # Load the template
         doc = Document(TEMPLATE_PATH)
         logger.info(f'Template loaded from: {TEMPLATE_PATH}')
+        
+        # Debug: Print the content of the template
+        logger.debug("Template content:")
+        for paragraph in doc.paragraphs:
+            logger.debug(paragraph.text)
         
         # Prepare replacements dictionary
         replacements = {
@@ -111,7 +126,7 @@ def generate_docx(data):
             replacements[f'{{{{experience[{i}].city}}}}'] = exp.get('city', '')
             replacements[f'{{{{experience[{i}].1stbullet}}}}'] = exp.get('1stbullet', '')
             replacements[f'{{{{experience[{i}].2ndbullet}}}}'] = exp.get('2ndbullet', '')
-            
+        
         # Handle project section
         projects = data.get('project', [])
         for i, proj in enumerate(projects):
@@ -122,21 +137,22 @@ def generate_docx(data):
             replacements[f'{{{{project[{i}].3dbullet}}}}'] = proj.get('3dbullet', '')
             replacements[f'{{{{project[{i}].4thbullet}}}}'] = proj.get('4thbullet', '')
             replacements[f'{{{{project[{i}].link}}}}'] = proj.get('link', '')
-            
+        
         # Handle education section
         education = data.get('education', [])
         for i, edu in enumerate(education):
             replacements[f'{{{{education[{i}].branch}}}}'] = edu.get('branch', '')
             replacements[f'{{{{education[{i}].cgpa}}}}'] = edu.get('cgpa', '')
-            
+        
         # Handle responsibilities section
         responsibilities = data.get('responsibilities', [])
         for i, resp in enumerate(responsibilities):
             name = resp.get('name', '')
             org = resp.get('organization', '')
-            replacements[f'{{{{responsibilities[{i}].name, responsibilities[{i}].organization}}}}'] = f"{name}, {org}"
+            replacements[f'{{{{responsibilities[{i}].name}}}}'] = name
+            replacements[f'{{{{responsibilities[{i}].organization}}}}'] = org
             replacements[f'{{{{responsibilities[{i}].bullet}}}}'] = resp.get('bullet', '')
-            
+        
         # Replace all placeholders
         replace_all_placeholders(doc, replacements)
         
@@ -166,7 +182,7 @@ def create_docx():
         if not data:
             logger.warning('No JSON data after cleaning')
             return jsonify({"error": "No data provided"}), 400
-
+        print(data)
         # Generate DOCX from cleaned JSON
         generate_docx(data)
         download_url = request.host_url.rstrip('/') + '/download_resume'
