@@ -111,7 +111,7 @@ if submit_button:
                 st.success("Your resume has been successfully tailored!")
 
                 # Assume resume is always at this URL
-                download_url = "http://resume-pdf-endpoint.onrender.com/download_resume"
+                download_url = "http://3.111.41.213:5000/download_resume"
 
                 # Fetch the resume file content
                 resume_file = fetch_resume_file(download_url)
