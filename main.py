@@ -78,7 +78,7 @@ if submit_button:
         if not ("drive.google.com" in converted_url):
             st.error("Please use a Google Drive link to your resume.")
         else:
-            WEBHOOK_URL = "https://hook.eu2.make.com/62o1ojangdlx7mlddd2ayq2r6wbk5rva"
+            WEBHOOK_URL = "https://hook.eu2.make.com/vvqmknloom6wi5coy586jycwqjn0oqo9"
 
             progress_placeholder = st.empty()
             with progress_placeholder.container():
