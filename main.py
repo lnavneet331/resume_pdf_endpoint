@@ -139,6 +139,6 @@ st.sidebar.markdown("""
 st.markdown("""
 ---
 <div style="text-align: center; color: #888; font-size: 12px;">
-Powered by AI Resume Tailoring Technology
+Powered by Nav
 </div>
 """, unsafe_allow_html=True)
