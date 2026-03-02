@@ -3,3 +3,4 @@ reportlab
 requests
 streamlit
 python-docx
+latex
