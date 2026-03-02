@@ -1,3 +1,0 @@
-# packages.txt
-texlive-latex-base
-texlive-latex-extra

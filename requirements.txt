@@ -1,6 +1,3 @@
 Flask
-reportlab
-requests
-streamlit
 python-docx
-latex
+gunicorn
